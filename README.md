@@ -41,7 +41,57 @@ The core relationship studied is:
 - Evaluate estimation accuracy, delay, and repeatability
 
 ---
+# EMG-to-Grasp Force Estimation Research Platform
 
+This repository contains a complete pipeline for estimating human hand grasp force from surface Electromyography (sEMG) signals. The project focuses on optimizing high-density sensor data (24 channels) into a lightweight, 4-channel model suitable for real-time control on embedded hardware like the ESP32.
+
+## 📂 Project Structure
+
+### 🧠 Machine Learning Models (.pkl)
+These files store the trained Random Forest Regressor weights.
+* **`final_4ch_model.pkl`**: The production-ready model. Optimized for 4-channel input with an $R^2$ score of **0.9640**.
+* **`grasp_force_model.pkl`**: Baseline model trained on the full 24-channel dataset.
+* **`grasp_force_model_4ch.pkl`**: Checkpoint model from the optimization phase.
+
+### 🐍 Core Processing Scripts (.py)
+* **`process_all.py`**: The main data pipeline. It handles HDF5 unpacking, 50Hz notch filtering, 20-450Hz bandpass filtering, and MVC normalization.
+* **`train_model.py`**: Initial training script used to establish baseline performance and calculate **Feature Importance** rankings.
+* **`optimisation_test.py`**: A diagnostic script used to evaluate how model accuracy drops as sensors are removed (24 -> 16 -> 8 -> 4 -> 2 -> 1).
+* **`train_4.py` & `test_4.py`**: Specialist scripts for training and validating the final 4-sensor architecture.
+* **`inspect_h5.py`**: Utility to visualize the internal structure and metadata of the raw putEMG HDF5 files.
+* **`oraganise.py`**: Manages file paths and automated data sorting.
+
+### 📊 Data & Artifacts
+* **`X_train.npy` / `y_train.npy`**: Preprocessed feature matrices (RMS values) and target force vectors in NumPy format.
+* **`force_prediction_results.png`**: Plot comparing Actual Force vs. Predicted Force on unseen test data.
+* **`residual_analysis.png`**: Residual plot used to verify error distribution and model bias.
+* **`sigprocess.m`**: MATLAB implementation for additional signal verification.
+
+---
+
+## 🛠 Preprocessing Pipeline
+To ensure high accuracy, the following steps are applied to the raw EMG data:
+1.  **Filtering**: 4th order Butterworth bandpass (20-450Hz) and a Notch filter at 50Hz to remove power line interference.
+2.  **Normalization**: Signals are scaled based on the Maximum Voluntary Contraction (MVC) trial of each subject.
+3.  **Feature Extraction**: Root Mean Square (RMS) calculated over a 200ms sliding window.
+
+## 📈 Performance Summary (4-Channel Model)
+The model was reduced from 24 sensors to 4 while retaining **98.3%** of the original performance.
+
+| Metric | Result |
+| :--- | :--- |
+| **R-Squared ($R^2$)** | **0.9640** |
+| **Mean Absolute Error (MAE)** | **0.0671** |
+| **Mean Squared Error (MSE)** | **0.0712** |
+
+## 📍 Recommended Sensor Placement
+For real-time implementation using **BioAmp EXG Pills**, sensors should be placed at the following locations on the right forearm:
+1.  **Channel 8 & 7**: Proximal forearm (near elbow), targeting the Extensor Digitorum.
+2.  **Channel 5**: Proximal forearm (near elbow), targeting the Flexor Carpi Radialis.
+3.  **Channel 18**: Distal forearm (near wrist), targeting tendon-related force shifts.
+
+---
+*Dataset Source: [putEMG Dataset](https://biolab.put.poznan.pl/putemg-dataset)*
 ## Hardware
 
 ### EMG Front-End
