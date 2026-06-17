@@ -1,175 +1,169 @@
-# emg-force-prediction
-An experimental platform for synchronized EMG and grip force acquisition and continuous force estimation.
-# EMG-Based Grasp Force Estimation
+# EMG-Based Grasp Force Prediction + Unity Virtual Hand
 
-This project focuses on building a low-cost experimental system to estimate human grasp force using surface electromyography (EMG) signals. By collecting synchronized EMG and grip force data, the system studies how muscle activation translates into mechanical force, forming the basis for intuitive control in prosthetic hands and assistive robotic devices.
-
-The project integrates biosignal acquisition, embedded systems, signal processing, and machine learning into a single research-oriented platform.
+Real-time grasp force estimation from surface EMG signals, driving a virtual hand in Unity to pick up and lift objects.
 
 ---
 
-## Motivation
+## What This Project Does
 
-Modern prosthetic and assistive devices require control methods that reflect not only *which* action a user intends, but also *how strongly* they intend to perform it. However, many current EMG-based systems rely on simple thresholding rather than continuous force estimation.
+Surface EMG signals from the forearm are processed, fed into a machine learning model, and the predicted force is streamed over UDP to Unity — where a procedurally-built virtual hand curls its fingers and physically lifts a weight object.
 
-This project explores the research question:
-
-**Can surface EMG signals be used to predict human grasp force in real time?**
-
----
-
-## System Overview
-
-The system consists of:
-- Surface EMG electrodes for measuring forearm muscle activity
-- A load-cell-based grip device to measure actual grasp force
-- A microcontroller (ESP32 preferred) for synchronized data acquisition
-- A signal processing pipeline for EMG feature extraction
-- A regression or machine learning model to estimate force from EMG
-
-The core relationship studied is:
+```
+Forearm EMG (2 channels)
+  → Signal Processing (bandpass + notch filter + MVC normalization)
+  → RMS Feature Extraction (200ms windows @ 10Hz)
+  → Random Forest Model → Predicted Grasp Force (0.0 – 1.0)
+  → UDP (port 5005) → Unity
+  → Virtual Hand Finger Animation + Object Lifting
+```
 
 ---
 
-## Objectives
+## Project Journey
 
-- Design and build a grip force measurement device using a load cell
-- Acquire clean surface EMG signals from relevant forearm muscles
-- Develop synchronized EMG and force data acquisition
-- Perform EMG signal processing (filtering, rectification, envelope extraction)
-- Model the EMG–force relationship using regression or machine learning
-- Evaluate estimation accuracy, delay, and repeatability
+### Step 1 — Raw Data Processing (`process_all.py`)
+- Dataset: putEMG (5 subjects, 24-channel sEMG + load cell force @ 5120 Hz)
+- Applied 4th-order Butterworth bandpass filter (20–450 Hz)
+- Applied 50 Hz IIR notch filter (powerline noise removal)
+- Normalized each subject's signals using MVC (Maximum Voluntary Contraction) calibration
+- Extracted RMS features over 200ms sliding windows with 100ms step → ~10 Hz feature rate
+- Output: `X_train.npy` (16,353 × 24) and `y_train.npy` (16,353,)
 
----
-# EMG-to-Grasp Force Estimation Research Platform
+### Step 2 — Channel Optimization (`pipeline_2ch.py`)
+Reduced 24 channels down to 2, following this process:
 
-This repository contains a complete pipeline for estimating human hand grasp force from surface Electromyography (sEMG) signals. The project focuses on optimizing high-density sensor data (24 channels) into a lightweight, 4-channel model suitable for real-time control on embedded hardware like the ESP32.
+1. **Linear Regression sweep** over all 276 possible channel pairs (fast 5-fold CV ranking)
+2. **Random Forest re-test** on top 20 pairs (honest estimate with 3-fold CV)
+3. **Time-lag sweep** — tested offsets 0–400ms to find optimal EMG → force delay
+4. **Final model comparison** — Random Forest vs Gradient Boosting on best pair + lag
 
-## 📂 Project Structure
+**Result:**
+| Setting | Value |
+|---|---|
+| Best channels | **Ch5 + Ch14** (0-indexed: 4, 13) |
+| Optimal time lag | **100ms** (1 window) |
+| Best model | **RandomForest** |
+| Saved as | `final_2ch_model.pkl` + `final_2ch_meta.pkl` |
 
-### 🧠 Machine Learning Models (.pkl)
-These files store the trained Random Forest Regressor weights.
-* **`final_4ch_model.pkl`**: The production-ready model. Optimized for 4-channel input with an $R^2$ score of **0.9640**.
-* **`grasp_force_model.pkl`**: Baseline model trained on the full 24-channel dataset.
-* **`grasp_force_model_4ch.pkl`**: Checkpoint model from the optimization phase.
+### Step 3 — Real-Time Simulator (`esp_simulator.py`)
+Simulates ESP32 hardware for testing the full pipeline on a PC:
+- Loads `final_2ch_model.pkl` and metadata
+- Replays preprocessed EMG features from `X_train.npy`
+- Predicts force at 10 Hz, normalizes to 0.0–1.0 range
+- Sends JSON packets over UDP to port 5005
 
-### 🐍 Core Processing Scripts (.py)
-* **`process_all.py`**: The main data pipeline. It handles HDF5 unpacking, 50Hz notch filtering, 20-450Hz bandpass filtering, and MVC normalization.
-* **`train_model.py`**: Initial training script used to establish baseline performance and calculate **Feature Importance** rankings.
-* **`optimisation_test.py`**: A diagnostic script used to evaluate how model accuracy drops as sensors are removed (24 -> 16 -> 8 -> 4 -> 2 -> 1).
-* **`train_4.py` & `test_4.py`**: Specialist scripts for training and validating the final 4-sensor architecture.
-* **`inspect_h5.py`**: Utility to visualize the internal structure and metadata of the raw putEMG HDF5 files.
-* **`oraganise.py`**: Manages file paths and automated data sorting.
+### Step 4 — Unity Virtual Hand
+Four C# scripts drive the virtual hand simulation:
 
-### 📊 Data & Artifacts
-* **`X_train.npy` / `y_train.npy`**: Preprocessed feature matrices (RMS values) and target force vectors in NumPy format.
-* **`force_prediction_results.png`**: Plot comparing Actual Force vs. Predicted Force on unseen test data.
-* **`residual_analysis.png`**: Residual plot used to verify error distribution and model bias.
-* **`sigprocess.m`**: MATLAB implementation for additional signal verification.
-
----
-
-## 🛠 Preprocessing Pipeline
-To ensure high accuracy, the following steps are applied to the raw EMG data:
-1.  **Filtering**: 4th order Butterworth bandpass (20-450Hz) and a Notch filter at 50Hz to remove power line interference.
-2.  **Normalization**: Signals are scaled based on the Maximum Voluntary Contraction (MVC) trial of each subject.
-3.  **Feature Extraction**: Root Mean Square (RMS) calculated over a 200ms sliding window.
-
-## 📈 Performance Summary (4-Channel Model)
-The model was reduced from 24 sensors to 4 while retaining **98.3%** of the original performance.
-
-| Metric | Result |
-| :--- | :--- |
-| **R-Squared ($R^2$)** | **0.9640** |
-| **Mean Absolute Error (MAE)** | **0.0671** |
-| **Mean Squared Error (MSE)** | **0.0712** |
-
-## 📍 Recommended Sensor Placement
-For real-time implementation using **BioAmp EXG Pills**, sensors should be placed at the following locations on the right forearm:
-1.  **Channel 8 & 7**: Proximal forearm (near elbow), targeting the Extensor Digitorum.
-2.  **Channel 5**: Proximal forearm (near elbow), targeting the Flexor Carpi Radialis.
-3.  **Channel 18**: Distal forearm (near wrist), targeting tendon-related force shifts.
-
----
-*Dataset Source: [putEMG Dataset](https://biolab.put.poznan.pl/putemg-dataset)*
-## Hardware
-
-### EMG Front-End
-- **BioAmp EXG Pill** (recommended)
-- MyoWare 2.0 EMG Sensor (alternative)
-
-### Processing
-- ESP32 / Arduino Nano / Arduino Uno
-- USB serial communication for real-time data streaming
-
-### Sensors and Consumables
-- Ag/AgCl disposable surface EMG electrodes
-- Load cell with amplifier (e.g., HX711)
-- Electrode cables, straps, skin preparation materials
+| Script | Role |
+|---|---|
+| `GraspForceReceiver.cs` | Listens on UDP 5005, animates finger joints via Lerp |
+| `HandBuilder.cs` | Editor tool — builds the full hand scene in one click |
+| `HandLifter.cs` | Physics-based gripping and lifting of objects |
+| `LiftableObject.cs` | Marks an object as liftable, handles reset if it falls |
 
 ---
 
-## Software and Tools
+## Repository Structure
 
-- **Embedded Programming:** Arduino / ESP32 firmware
-- **Signal Processing:** MATLAB or GNU Octave
-- **Optional Framework:** BrainFlow (biosignal streaming)
-- **Version Control & Documentation:** GitHub
-
----
-
-## Signal Processing Pipeline
-
-- Sampling rate: 250–1000 Hz
-- Bandpass filtering (≈20–450 Hz)
-- Optional 50 Hz notch filtering
-- Signal rectification
-- Envelope extraction (low-pass filtering)
-- Calibration using rest and Maximum Voluntary Contraction (MVC)
-- Mapping normalized EMG features to grip force
-
----
-
-## Methodology (Planned)
-(tentative)
-1. Hardware setup and sensor calibration
-2. Synchronized EMG and force data acquisition
-3. EMG preprocessing and feature extraction
-4. Time-delay alignment between EMG and force
-5. Regression / ML-based force estimation
-6. Quantitative evaluation and analysis
+```
+emg-force-prediction/
+├── Data/                     # Raw putEMG HDF5 files (5 subjects, ~2GB)
+├── model/                    # Python virtual environment
+│
+├── process_all.py            # Step 1: Preprocess raw HDF5 → X_train.npy, y_train.npy
+├── pipeline_2ch.py           # Step 2: Find best 2-channel pair + lag, train final model
+├── esp_simulator.py          # Step 3: Simulate ESP32, stream predictions over UDP
+│
+├── GraspForceReceiver.cs     # Unity: receive UDP force, animate fingers
+├── HandBuilder.cs            # Unity: one-click hand scene builder (Editor tool)
+├── HandLifter.cs             # Unity: grip and lift physics
+├── LiftableObject.cs         # Unity: liftable object definition
+│
+├── final_2ch_model.pkl       # Trained 2-channel RandomForest model
+├── final_2ch_meta.pkl        # Metadata: channels=[4,13], lag=100ms, R² score
+├── X_train.npy               # Preprocessed EMG features (16353 x 24)
+├── y_train.npy               # Force labels (16353,)
+│
+├── force_prediction_results.png   # Predicted vs actual force plot
+├── residual_analysis.png          # Error distribution plot
+└── LICENSE
+```
 
 ---
 
-## Timeline (Tentative – To Be Refined)
+## Running the Virtual Hand Demo
 
-- **Month 1:** Understanding EMG fundamentals, hardware setup, raw data acquisition
-- **Month 2:** Signal processing, calibration, baseline force estimation
-- **Month 3:** Model refinement, evaluation, report, and demonstration
+### Requirements
+```bash
+# Python dependencies (use the included venv)
+model/bin/pip install numpy scikit-learn scipy h5py joblib
+```
+
+### Step 1 — Run the Python Simulator
+```bash
+cd emg-force-prediction
+model/bin/python esp_simulator.py
+```
+You should see ASCII bars updating in real time showing predicted vs actual force.
+
+### Step 2 — Unity Setup (one-time)
+
+1. Open **Unity Hub** → New Project → **3D Core** → name it `EMG_Hand_Simulation`
+2. Drag all four `.cs` files into Unity's `Assets/` folder
+3. Wait for Unity to compile (a few seconds)
+4. In the top menu: **Tools → EMG Hand Simulation → Build Virtual Hand**
+
+This automatically creates:
+- `Hand_Controller` — parent object with `GraspForceReceiver` + `HandLifter` attached
+- `Palm` + 5 fingers (`Index`, `Middle`, `Ring`, `Pinky`, `Thumb`) each with Base/Mid/Tip joints
+- `Weight_Object` (1 kg cylinder) resting on a `Simulation_Floor`
+- All finger joints pre-assigned to the receiver's joint array
+
+### Step 3 — Play
+
+1. Make sure `esp_simulator.py` is running in terminal
+2. Click **Play** in Unity
+3. Watch the hand curl its fingers as force increases — when grip force is sufficient, the hand lifts the weight object
+
+### Configuration (Inspector on Hand_Controller)
+
+| Parameter | Default | Effect |
+|---|---|---|
+| `lerpSpeed` | 10 | Smoothing speed — higher = snappier fingers |
+| `closedAngle` | 75° | Maximum finger curl angle |
+| `maxLiftingCapacity` | 5 kg | Max liftable weight at 100% force |
+| `gripRange` | 1.8 m | Distance within which grip can engage |
+| `liftSpeed` | 2.0 | Speed of hand moving upward |
+| `targetLiftHeight` | 1.0 m | How high the hand lifts |
 
 ---
 
-## Expected Outcomes
+## Signal Processing Details
 
-- A working low-cost EMG-based grasp force sensing platform
-- A dataset of synchronized EMG and grip force signals
-- A model capable of predicting grasp force trends from EMG
-- Quantitative evaluation of system performance and limitations
-- Demonstration videos and technical report
-
----
-
-## References
-
-- De Luca, C. J., *The Use of Surface Electromyography in Biomechanics*
-- PhysioNet EMG Signal Database
-- MATLAB EMG Processing Examples
-- BioAmp EXG Pill Documentation
-- BrainFlow Open-Source Biosignal SDK
+| Parameter | Value |
+|---|---|
+| Sampling rate | 5120 Hz |
+| Bandpass filter | 20–450 Hz (4th-order Butterworth) |
+| Notch filter | 50 Hz (powerline) |
+| Normalization | Per-subject MVC (95th percentile of filtered MVC envelope) |
+| Feature | RMS over 200ms window |
+| Step size | 100ms (→ 10 Hz feature rate) |
+| Time lag correction | 100ms (EMG leads force) |
 
 ---
 
-## Status
+## Dataset
 
-🚧 **Project in progress**
-This repository will be updated progressively as the system is developed and evaluated.
+putEMG — High-density surface EMG dataset for hand gesture recognition  
+Biolab, Poznan University of Technology  
+5 subjects, 24 channels, synchronized grip force @ 5120 Hz
+
+---
+
+## Hardware Target
+
+For deployment on real hardware:
+- **Sensors:** BioAmp EXG Pill (place on Ch5 and Ch14 positions = proximal forearm flexor region)
+- **MCU:** ESP32 (runs inference + sends UDP over WiFi)
+- **Force feedback:** Load cell + HX711 for calibration
