@@ -35,6 +35,9 @@ public class GraspForceReceiver : MonoBehaviour
     [Range(0f, 1f)] public float currentAnimatedForce = 0f;
     [Range(0f, 1f)] public float currentActualForce = 0f;
 
+    [Tooltip("When false, fingers stay at openAngle regardless of force. Set by HandLifter once hand reaches the object.")]
+    public bool allowFingerCurl = false;
+
     // Internal state
     private Quaternion[] initialRotations;
     private UdpClient udpClient;
@@ -86,7 +89,8 @@ public class GraspForceReceiver : MonoBehaviour
 
         if (fingerJoints == null) return;
 
-        float baseAngle = Mathf.Lerp(openAngle, closedAngle, currentAnimatedForce);
+        float curlForce = allowFingerCurl ? currentAnimatedForce : 0f;
+        float baseAngle = Mathf.Lerp(openAngle, closedAngle, curlForce);
 
         for (int i = 0; i < fingerJoints.Length; i++)
         {

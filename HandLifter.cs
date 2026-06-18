@@ -51,10 +51,6 @@ public class HandLifter : MonoBehaviour
     public GraspForceReceiver receiver;
     public LiftableObject targetObject;
 
-    [Header("Reset")]
-    [Tooltip("Press this key to reset the entire simulation to its initial state.")]
-    public KeyCode resetKey = KeyCode.R;
-
     // ── private state ────────────────────────────────────────────────────────
     private Vector3 restPosition;
     private Quaternion restRotation;
@@ -80,11 +76,20 @@ public class HandLifter : MonoBehaviour
 
     private void Update()
     {
-        if (Input.GetKeyDown(resetKey))
+#if ENABLE_INPUT_SYSTEM
+        if (UnityEngine.InputSystem.Keyboard.current != null &&
+            UnityEngine.InputSystem.Keyboard.current.rKey.wasPressedThisFrame)
         {
             ResetSimulation();
             return;
         }
+#else
+        if (Input.GetKeyDown(KeyCode.R))
+        {
+            ResetSimulation();
+            return;
+        }
+#endif
 
         if (receiver == null || targetObject == null) return;
 
@@ -102,6 +107,9 @@ public class HandLifter : MonoBehaviour
         float currentCapacity = force * maxLiftingCapacity;
         bool hasSufficientForce = currentCapacity >= targetObject.weightKg && force >= minApproachForce;
         bool inRange = distanceToPalm <= gripRange;
+
+        // Only allow fingers to curl once the hand has reached the object
+        receiver.allowFingerCurl = inRange || isHolding;
 
         if (inRange && hasSufficientForce && !isHolding)
         {

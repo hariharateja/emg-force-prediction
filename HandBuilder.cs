@@ -46,30 +46,22 @@ public class HandBuilder : EditorWindow
         ctrlRb.isKinematic = true;
 
         // ── All positions below are LOCAL to the controller ──────────────────
-        const float palmCX = -0.05f;   // slightly left so fingers wrap toward +X
-        const float palmCY = 0f;       // controller already at cylinder-centre height
+        //    Cylinder radius = 0.125 m.  Thumb and fingers must straddle it in X
+        //    so the cylinder fits between them when the hand approaches.
+        const float palmCX = 0f;
+        const float palmCY = 0f;       // controller at cylinder-centre height
         const float palmCZ = -0.02f;   // palm slightly behind controller centre
 
-        // ── Palm — YZ plane, face pointing +Z ───────────────────────────────
-        GameObject palmWrist = MakePrimitive(PrimitiveType.Cube, "Palm_Wrist", ctrl);
-        palmWrist.transform.localPosition = new Vector3(palmCX, palmCY - 0.10f, palmCZ);
-        palmWrist.transform.localScale    = new Vector3(0.06f, 0.06f, 0.05f);
-        SetColor(palmWrist, Skin(0.95f));
+        // ── Palm — wide enough to span from thumb side to finger side ────────
+        GameObject palm = MakePrimitive(PrimitiveType.Cube, "Palm_Main", ctrl);
+        palm.transform.localPosition = new Vector3(palmCX, palmCY, palmCZ);
+        palm.transform.localScale    = new Vector3(0.30f, 0.14f, 0.04f);
+        SetColor(palm, Skin(1.00f));
 
-        GameObject palmMid = MakePrimitive(PrimitiveType.Cube, "Palm_Mid", ctrl);
-        palmMid.transform.localPosition = new Vector3(palmCX, palmCY, palmCZ);
-        palmMid.transform.localScale    = new Vector3(0.06f, 0.14f, 0.05f);
-        SetColor(palmMid, Skin(1.00f));
-
-        GameObject palmKnuckle = MakePrimitive(PrimitiveType.Cube, "Palm_Knuckle", ctrl);
-        palmKnuckle.transform.localPosition = new Vector3(palmCX, palmCY + 0.06f, palmCZ);
-        palmKnuckle.transform.localScale    = new Vector3(0.06f, 0.10f, 0.05f);
-        SetColor(palmKnuckle, Skin(1.00f));
-
-        // Wrist stub
-        GameObject wristStub = MakePrimitive(PrimitiveType.Cylinder, "Wrist", ctrl);
-        wristStub.transform.localPosition = new Vector3(palmCX, palmCY - 0.16f, palmCZ);
-        wristStub.transform.localScale    = new Vector3(0.05f, 0.04f, 0.05f);
+        // Wrist — behind the palm
+        GameObject wristStub = MakePrimitive(PrimitiveType.Cube, "Wrist", ctrl);
+        wristStub.transform.localPosition = new Vector3(palmCX, palmCY, palmCZ - 0.08f);
+        wristStub.transform.localScale    = new Vector3(0.14f, 0.10f, 0.12f);
         SetColor(wristStub, Skin(0.92f));
 
         // ── Capsule phalanx extending in +Z ──────────────────────────────────
@@ -133,16 +125,34 @@ public class HandBuilder : EditorWindow
             PhalanxForward(fname + "_Dis", dp, dLen, diam * 0.80f, Skin(0.85f));
         }
 
-        // ── Thumb — opposing from +X side ────────────────────────────────────
-        AddFinger("Thumb", palmCX + 0.12f, palmCY - 0.10f,
-                  0.12f, 0.09f, 0.07f, 0.055f,
+        // ── Thumb — far side (-X), outside the cylinder radius (0.125) ─────
+        //    Curls toward +X (wraps around the -X side of the cylinder)
+        AddFinger("Thumb", -0.15f, palmCY + 0.02f,
+                  0.10f, 0.08f, 0.06f, 0.05f,
+                  Quaternion.identity);
+
+        // ── Four fingers — near side (+X), outside the cylinder radius ───────
+        //    Curl toward -X (wrap around the +X side of the cylinder)
+        //    Spread vertically along the cylinder height
+        AddFinger("Index",  0.15f, palmCY + 0.04f,
+                  0.14f, 0.10f, 0.07f, 0.04f,
+                  Quaternion.Euler(0f, 0f, 180f));
+        AddFinger("Middle", 0.15f, palmCY + 0.01f,
+                  0.15f, 0.11f, 0.08f, 0.042f,
+                  Quaternion.Euler(0f, 0f, 180f));
+        AddFinger("Ring",   0.15f, palmCY - 0.02f,
+                  0.13f, 0.10f, 0.07f, 0.038f,
+                  Quaternion.Euler(0f, 0f, 180f));
+        AddFinger("Pinky",  0.15f, palmCY - 0.05f,
+                  0.10f, 0.08f, 0.05f, 0.032f,
                   Quaternion.Euler(0f, 0f, 180f));
 
-        // ── Four fingers — spread along Y (vertical) with gaps ───────────────
-        AddFinger("Index",  palmCX, palmCY - 0.06f,  0.16f, 0.12f, 0.08f, 0.042f);
-        AddFinger("Middle", palmCX, palmCY - 0.005f, 0.18f, 0.14f, 0.10f, 0.046f);
-        AddFinger("Ring",   palmCX, palmCY + 0.05f,  0.16f, 0.12f, 0.08f, 0.040f);
-        AddFinger("Pinky",  palmCX, palmCY + 0.10f,  0.12f, 0.09f, 0.06f, 0.034f);
+        // ── Floor (thick slab, top surface at Y = 0) ─────────────────────────
+        GameObject floor = MakePrimitive(PrimitiveType.Cube, "Simulation_Floor", null);
+        floor.transform.SetPositionAndRotation(
+            new Vector3(0f, -0.25f, 0f), Quaternion.identity);
+        floor.transform.localScale = new Vector3(4f, 0.5f, 4f);
+        SetColor(floor, new Color(0.52f, 0.52f, 0.52f));
 
         // ── Cylinder on the floor ────────────────────────────────────────────
         // Scale (0.25, 0.25, 0.25) → height 0.50 m, diameter 0.25 m.
@@ -160,13 +170,6 @@ public class HandBuilder : EditorWindow
         LiftableObject liftable = Undo.AddComponent<LiftableObject>(weight);
         liftable.weightKg = 1.0f;
 
-        // ── Floor ─────────────────────────────────────────────────────────────
-        GameObject floor = MakePrimitive(PrimitiveType.Cube, "Simulation_Floor", null);
-        floor.transform.SetPositionAndRotation(
-            new Vector3(0f, -0.05f, 0f), Quaternion.identity);
-        floor.transform.localScale = new Vector3(4f, 0.1f, 4f);
-        SetColor(floor, new Color(0.52f, 0.52f, 0.52f));
-
         // ── GraspForceReceiver ────────────────────────────────────────────────
         GraspForceReceiver recv = Undo.AddComponent<GraspForceReceiver>(ctrl);
         recv.port            = 5005;
@@ -182,14 +185,54 @@ public class HandBuilder : EditorWindow
         lifter.receiver           = recv;
         lifter.targetObject       = liftable;
         lifter.minApproachForce   = 0.10f;
-        lifter.approachOffset     = 0.45f;   // slide +Z toward cylinder
+        lifter.approachOffset     = 0.50f;   // slide +Z until palm touches cylinder
         lifter.approachSpeed      = 3.0f;
         lifter.maxLiftingCapacity = 5.0f;
-        lifter.gripRange          = 0.30f;
+        lifter.gripRange          = 0.15f;  // tight — only curl when palm is near the surface
         lifter.gripHoldTime       = 0.40f;
         lifter.palmHeight         = 0f;      // palm at controller height = cylinder centre
         lifter.liftSpeed          = 2.0f;
         lifter.liftHeight         = 1.0f;
+
+        // ── Camera — close-up on hand-object interaction ─────────────────────
+        // Disable every camera except the one we configure so stale sample-scene
+        // cameras don't fight for the Game view.
+        Camera chosen = null;
+        foreach (Camera cam in Object.FindObjectsOfType<Camera>())
+        {
+            if (chosen == null)
+            {
+                chosen = cam;
+            }
+            else
+            {
+                cam.enabled = false;
+                AudioListener al = cam.GetComponent<AudioListener>();
+                if (al != null) al.enabled = false;
+            }
+        }
+
+        if (chosen != null)
+        {
+            Undo.RecordObject(chosen.transform, "Reposition Camera");
+            Undo.RecordObject(chosen, "Adjust Camera");
+
+            // Position: to the right and above the interaction zone,
+            // looking straight at the space between hand and object.
+            // Dark background instead of skybox
+            chosen.clearFlags = CameraClearFlags.SolidColor;
+            chosen.backgroundColor = new Color(0.15f, 0.15f, 0.18f);
+
+            // Tight close-up, eye-level with the cylinder
+            chosen.transform.position = new Vector3(0.25f, 0.30f, -0.20f);
+            chosen.transform.LookAt(new Vector3(0f, 0.25f, -0.05f));
+
+            chosen.nearClipPlane = 0.005f;
+            chosen.fieldOfView   = 40f;
+
+            EditorUtility.SetDirty(chosen);
+            Debug.Log("[HandBuilder] Camera repositioned for close-up hand-object view.");
+        }
 
         EditorUtility.SetDirty(recv);
         EditorUtility.SetDirty(lifter);
